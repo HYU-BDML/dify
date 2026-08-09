@@ -14,7 +14,6 @@ from libs.login import current_account_with_tenant, login_required
 from models import AccountTrialAppRecord, App, InstalledApp, TrialApp
 from services.enterprise.enterprise_service import EnterpriseService
 from services.feature_service import FeatureService
-from services.recommended_app_service import RecommendedAppService
 
 
 def installed_app_required[**P, R](view: Callable[Concatenate[InstalledApp, P], R] | None = None):
@@ -107,7 +106,7 @@ def trial_app_required[**P, R](view: Callable[Concatenate[App, P], R] | None = N
 def trial_feature_enable[**P, R](view: Callable[P, R]):
     @wraps(view)
     def decorated(*args: P.args, **kwargs: P.kwargs):
-        if not RecommendedAppService.is_trial_app_enabled():
+        if not FeatureService.is_trial_app_enabled():
             abort(403, "Trial app feature is not enabled.")
         return view(*args, **kwargs)
 

@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from controllers.common import session as session_module
@@ -57,12 +58,64 @@ def test_get_app_model_rejects_wrong_mode(monkeypatch: pytest.MonkeyPatch, sqlit
         handler(app_id=app_model.id)
 
 
+def test_load_recommended_app_model_rejects_app_outside_catalog(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = MagicMock(spec=Session)
+    app_loader = MagicMock()
+    recommended_app_queries = MagicMock()
+    recommended_app_queries.is_recommended.return_value = False
+    monkeypatch.setattr(
+        wraps_module,
+        "application_services",
+        lambda: SimpleNamespace(recommended_app_queries=recommended_app_queries),
+    )
+    monkeypatch.setattr(wraps_module.AppService, "get_normal_app_by_id", app_loader)
+
+    assert wraps_module._load_recommended_app_model(session, "app-1") is None
+    recommended_app_queries.is_recommended.assert_called_once_with("app-1")
+    app_loader.assert_not_called()
+
+
+def test_load_recommended_app_model_uses_request_session(
+    monkeypatch: pytest.MonkeyPatch, sqlite_session: Session
+) -> None:
+    app_model = _persist_app(sqlite_session)
+    recommended_app_queries = MagicMock()
+    recommended_app_queries.is_recommended.return_value = True
+    monkeypatch.setattr(
+        wraps_module,
+        "application_services",
+        lambda: SimpleNamespace(recommended_app_queries=recommended_app_queries),
+    )
+
+    assert wraps_module._load_recommended_app_model(sqlite_session, app_model.id) is app_model
+
+
+def test_load_recommended_app_model_rejects_non_normal_app(
+    monkeypatch: pytest.MonkeyPatch, sqlite_session: Session
+) -> None:
+    app_model = _persist_app(sqlite_session)
+    app_id = app_model.id
+    sqlite_session.execute(text("UPDATE apps SET status = 'disabled' WHERE id = :app_id"), {"app_id": app_id})
+    sqlite_session.commit()
+    recommended_app_queries = MagicMock()
+    recommended_app_queries.is_recommended.return_value = True
+    monkeypatch.setattr(
+        wraps_module,
+        "application_services",
+        lambda: SimpleNamespace(recommended_app_queries=recommended_app_queries),
+    )
+
+    assert wraps_module._load_recommended_app_model(sqlite_session, app_id) is None
+
+
 def test_get_app_model_with_trial_requires_trial_app_registration(
     monkeypatch: pytest.MonkeyPatch, sqlite_session: Session
 ) -> None:
     app_model = _persist_app(sqlite_session)
-    recommended_get_app = MagicMock(return_value=None)
-    monkeypatch.setattr(wraps_module.RecommendedAppService, "get_app", recommended_get_app)
+    recommended_app_loader = MagicMock(return_value=None)
+    monkeypatch.setattr(wraps_module, "_load_recommended_app_model", recommended_app_loader)
 
     class Handler:
         @wraps_module.get_app_model_with_trial
@@ -72,7 +125,7 @@ def test_get_app_model_with_trial_requires_trial_app_registration(
     with pytest.raises(AppNotFoundError):
         Handler().get(sqlite_session, app_id=app_model.id)
 
-    recommended_get_app.assert_called_once_with(app_model.id, session=sqlite_session)
+    recommended_app_loader.assert_called_once_with(sqlite_session, app_model.id)
 
 
 def test_get_app_model_with_trial_falls_back_to_recommended_app(
@@ -80,9 +133,9 @@ def test_get_app_model_with_trial_falls_back_to_recommended_app(
 ) -> None:
     app_model = SimpleNamespace(id="app-1", mode=AppMode.CHAT.value, status="normal", tenant_id="t1")
     trial_app_loader = MagicMock(return_value=None)
-    recommended_get_app = MagicMock(return_value=app_model)
+    recommended_app_loader = MagicMock(return_value=app_model)
     monkeypatch.setattr(wraps_module, "_load_app_model_with_trial", trial_app_loader)
-    monkeypatch.setattr(wraps_module.RecommendedAppService, "get_app", recommended_get_app)
+    monkeypatch.setattr(wraps_module, "_load_recommended_app_model", recommended_app_loader)
 
     class Handler:
         @wraps_module.get_app_model_with_trial
@@ -91,7 +144,7 @@ def test_get_app_model_with_trial_falls_back_to_recommended_app(
 
     assert Handler().get(unbound_session, app_id="app-1") == "app-1"
     trial_app_loader.assert_called_once_with(unbound_session, "app-1")
-    recommended_get_app.assert_called_once_with("app-1", session=unbound_session)
+    recommended_app_loader.assert_called_once_with(unbound_session, "app-1")
 
 
 def test_get_app_model_with_trial_prefers_trial_registration(
@@ -99,9 +152,9 @@ def test_get_app_model_with_trial_prefers_trial_registration(
 ) -> None:
     app_model = SimpleNamespace(id="app-1", mode=AppMode.CHAT.value, status="normal", tenant_id="t1")
     trial_app_loader = MagicMock(return_value=app_model)
-    recommended_get_app = MagicMock()
+    recommended_app_loader = MagicMock()
     monkeypatch.setattr(wraps_module, "_load_app_model_with_trial", trial_app_loader)
-    monkeypatch.setattr(wraps_module.RecommendedAppService, "get_app", recommended_get_app)
+    monkeypatch.setattr(wraps_module, "_load_recommended_app_model", recommended_app_loader)
 
     class Handler:
         @wraps_module.get_app_model_with_trial
@@ -110,7 +163,7 @@ def test_get_app_model_with_trial_prefers_trial_registration(
 
     assert Handler().get(unbound_session, app_id="app-1") == "app-1"
     trial_app_loader.assert_called_once_with(unbound_session, "app-1")
-    recommended_get_app.assert_not_called()
+    recommended_app_loader.assert_not_called()
 
 
 def test_get_app_model_requires_app_id() -> None:

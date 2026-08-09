@@ -44,6 +44,8 @@ class RecommendedAppDetailRecord(NamedTuple):
 
 
 class RecommendedAppCatalogGateway(Protocol):
+    def is_recommended(self, app_id: str) -> bool: ...
+
     def list_recommended(self, language: str) -> RecommendedAppCatalogPage: ...
 
     def list_builtin(self, language: str) -> RecommendedAppCatalogPage: ...
@@ -100,6 +102,9 @@ class RecommendedAppQueryService:
         self._catalog = catalog
         self._trial_apps = trial_apps
         self._is_trial_enabled = is_trial_enabled
+
+    def is_recommended(self, app_id: str) -> bool:
+        return self._catalog.is_recommended(app_id)
 
     def list_recommended(
         self,

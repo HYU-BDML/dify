@@ -59,6 +59,18 @@ def _service(
     )
 
 
+@pytest.mark.parametrize("expected", [True, False])
+def test_is_recommended_delegates_to_catalog(expected: bool) -> None:
+    catalog = MagicMock()
+    catalog.is_recommended.return_value = expected
+    service, trial_apps, trial_enabled = _service(catalog=catalog)
+
+    assert service.is_recommended("app-1") is expected
+    catalog.is_recommended.assert_called_once_with("app-1")
+    trial_apps.existing_ids.assert_not_called()
+    trial_enabled.assert_not_called()
+
+
 @pytest.mark.parametrize(
     ("requested_language", "interface_language", "expected"),
     [

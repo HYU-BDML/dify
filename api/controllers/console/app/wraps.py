@@ -16,11 +16,12 @@ from configs import dify_config
 from controllers.common.session import with_session
 from controllers.common.wraps import RBACPermission, RBACResourceScope, enforce_rbac_access
 from controllers.console.app.error import AppNotFoundError
+from extensions.ext_application_services import application_services
 from extensions.ext_database import db
 from libs.login import current_account_with_tenant
 from models import App, AppMode, TrialApp
 from models.agent import AgentScope
-from services.recommended_app_service import RecommendedAppService
+from services.app_service import AppService
 
 __all__ = [
     "agent_manage_required_for_agent_app",
@@ -54,6 +55,13 @@ def _load_app_model_with_trial(session: Session, app_id: str) -> App | None:
         select(App).join(TrialApp, TrialApp.app_id == App.id).where(App.id == app_id, App.status == "normal").limit(1)
     )
     return app_model
+
+
+def _load_recommended_app_model(session: Session, app_id: str) -> App | None:
+    """Load a normal App in the request Session after catalog admission succeeds."""
+    if not application_services().recommended_app_queries.is_recommended(app_id):
+        return None
+    return AppService.get_normal_app_by_id(app_id, session)
 
 
 def agent_manage_required_for_agent_app[**P, R](view: Callable[P, R]) -> Callable[P, R]:
@@ -221,7 +229,7 @@ def get_app_model_with_trial[**P, R](
                 raise RuntimeError("get_app_model_with_trial requires @with_session")
             app_model = _load_app_model_with_trial(session, app_id)
             if app_model is None:
-                app_model = RecommendedAppService.get_app(app_id, session=session)
+                app_model = _load_recommended_app_model(session, app_id)
 
             if not app_model:
                 raise AppNotFoundError()

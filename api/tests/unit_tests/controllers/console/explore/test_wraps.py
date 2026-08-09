@@ -256,7 +256,7 @@ def test_trial_feature_enable_disabled():
         return "ok"
 
     with patch(
-        "controllers.console.explore.wraps.RecommendedAppService.is_trial_app_enabled",
+        "controllers.console.explore.wraps.FeatureService.is_trial_app_enabled",
         return_value=False,
     ):
         with pytest.raises(Forbidden):
@@ -269,7 +269,7 @@ def test_trial_feature_enable_enabled():
         return "ok"
 
     with patch(
-        "controllers.console.explore.wraps.RecommendedAppService.is_trial_app_enabled",
+        "controllers.console.explore.wraps.FeatureService.is_trial_app_enabled",
         return_value=True,
     ):
         assert view() == "ok"
