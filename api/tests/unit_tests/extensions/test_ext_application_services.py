@@ -1,11 +1,14 @@
 from unittest.mock import MagicMock, patch
+from uuid import uuid4
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from enums import DeploymentEdition
 from extensions.ext_application_services import build_application_services
 from extensions.ext_redis import RedisClientWrapper
+from models.model import AccountTrialAppRecord
 
 
 @pytest.mark.parametrize(
@@ -56,3 +59,27 @@ def test_build_application_services_does_not_construct_schema_manager(
         )
 
     schema_manager.assert_not_called()
+
+
+def test_build_application_services_wires_trial_app_usage(
+    sqlite_session_factory: sessionmaker[Session],
+) -> None:
+    services = build_application_services(
+        database_client=sqlite_session_factory,
+        deployment_edition=DeploymentEdition.COMMUNITY,
+        redis=MagicMock(spec=RedisClientWrapper),
+    )
+    app_id = str(uuid4())
+    account_id = str(uuid4())
+
+    services.trial_app_usage.record(app_id=app_id, account_id=account_id)
+
+    with sqlite_session_factory() as session:
+        record = session.scalar(
+            select(AccountTrialAppRecord).where(
+                AccountTrialAppRecord.app_id == app_id,
+                AccountTrialAppRecord.account_id == account_id,
+            )
+        )
+    assert record is not None
+    assert record.count == 1

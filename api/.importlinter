@@ -157,3 +157,18 @@ forbidden_modules =
     services.recommended_app_service
     sqlalchemy
     werkzeug
+
+[importlinter:contract:trial-app-usage-service-boundary]
+name = Trial app usage application service is framework and persistence neutral
+type = forbidden
+source_modules =
+    services.trial_app_usage_service
+forbidden_modules =
+    configs
+    controllers
+    extensions
+    flask
+    models
+    repositories
+    sqlalchemy
+    werkzeug
