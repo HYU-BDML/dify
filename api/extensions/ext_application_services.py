@@ -14,6 +14,7 @@ from enums import DeploymentEdition
 from extensions.ext_redis import RedisClientWrapper, redis_client
 from repositories.explore_banner_query_repository import ExploreBannerQueryRepository
 from repositories.installation_state_repository import InstallationStateRepository
+from repositories.recommended_app_catalog_repository import DatabaseRecommendedAppCatalogRepository
 from repositories.trial_app_query_repository import TrialAppQueryRepository
 from repositories.trial_app_usage_repository import TrialAppUsageRepository
 from repositories.workspace_member_query_repository import WorkspaceMemberQueryRepository
@@ -22,7 +23,11 @@ from services.explore_banner_query_service import ExploreBannerQueryService
 from services.feature_query_service import FeatureQueryService
 from services.feature_service import FeatureService
 from services.feature_service_gateway import FeatureServiceGateway
-from services.recommended_app_query_compat import LegacyRecommendedAppCatalogGateway
+from services.recommended_app_catalog_gateway import (
+    BuiltinRecommendedAppCatalogGateway,
+    RecommendedAppCatalogRouter,
+    RemoteRecommendedAppCatalogGateway,
+)
 from services.recommended_app_query_service import RecommendedAppQueryService
 from services.schema_definition_service import SchemaDefinitionService
 from services.setup_adapters import RedisSetupLock, RegisterServiceAccountProvisioner
@@ -55,6 +60,14 @@ def build_application_services(
     redis: RedisClientWrapper,
 ) -> ApplicationServices:
     installation_state = InstallationStateRepository(client=database_client)
+    database_catalog = DatabaseRecommendedAppCatalogRepository(session_factory=database_client)
+    builtin_catalog = BuiltinRecommendedAppCatalogGateway()
+    remote_catalog = RemoteRecommendedAppCatalogGateway()
+    recommended_app_catalog = RecommendedAppCatalogRouter(
+        remote=remote_catalog,
+        database=database_catalog,
+        builtin=builtin_catalog,
+    )
     return ApplicationServices(
         explore_banner_queries=ExploreBannerQueryService(
             banners=ExploreBannerQueryRepository(client=database_client),
@@ -73,7 +86,7 @@ def build_application_services(
             app_dsl_version=CURRENT_APP_DSL_VERSION,
         ),
         recommended_app_queries=RecommendedAppQueryService(
-            catalog=LegacyRecommendedAppCatalogGateway(session_factory=database_client),
+            catalog=recommended_app_catalog,
             trial_apps=TrialAppQueryRepository(session_factory=database_client),
             is_trial_enabled=FeatureService.is_trial_app_enabled,
         ),

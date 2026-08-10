@@ -60,13 +60,13 @@ def _service(
 
 
 @pytest.mark.parametrize("expected", [True, False])
-def test_is_recommended_delegates_to_catalog(expected: bool) -> None:
+def test_is_in_catalog_delegates_to_catalog(expected: bool) -> None:
     catalog = MagicMock()
-    catalog.is_recommended.return_value = expected
+    catalog.contains.return_value = expected
     service, trial_apps, trial_enabled = _service(catalog=catalog)
 
-    assert service.is_recommended("app-1") is expected
-    catalog.is_recommended.assert_called_once_with("app-1")
+    assert service.is_in_catalog("app-1") is expected
+    catalog.contains.assert_called_once_with("app-1")
     trial_apps.existing_ids.assert_not_called()
     trial_enabled.assert_not_called()
 
@@ -97,19 +97,6 @@ def test_list_recommended_resolves_language(
     catalog.list_recommended.assert_called_once_with(expected)
 
 
-def test_list_recommended_falls_back_to_builtin_en_us_when_empty() -> None:
-    catalog = MagicMock()
-    catalog.list_recommended.return_value = _page(categories=("remote",))
-    catalog.list_builtin.return_value = _page("builtin-app", categories=("builtin",))
-    service, _, _ = _service(catalog=catalog)
-
-    result = service.list_recommended(requested_language="ja-JP", interface_language=None)
-
-    catalog.list_builtin.assert_called_once_with("en-US")
-    assert [app.app_id for app in result.recommended_apps] == ["builtin-app"]
-    assert result.categories == ("builtin",)
-
-
 def test_list_recommended_disables_upstream_trial_without_querying_trial_apps() -> None:
     catalog = MagicMock()
     catalog.list_recommended.return_value = _page("app-1")
@@ -138,7 +125,7 @@ def test_list_recommended_enriches_trial_status_in_one_bulk_query() -> None:
     trial_apps.existing_ids.assert_called_once_with(["app-1", "app-2"])
 
 
-def test_list_learn_dify_does_not_apply_general_builtin_fallback_or_return_categories() -> None:
+def test_list_learn_dify_does_not_return_categories() -> None:
     catalog = MagicMock()
     catalog.list_learn_dify.return_value = _page(categories=("ignored",))
     service, _, _ = _service(catalog=catalog)
@@ -146,7 +133,6 @@ def test_list_learn_dify_does_not_apply_general_builtin_fallback_or_return_categ
     result = service.list_learn_dify(requested_language="invalid", interface_language="fr-FR")
 
     catalog.list_learn_dify.assert_called_once_with("fr-FR")
-    catalog.list_builtin.assert_not_called()
     assert result.recommended_apps == ()
     assert not hasattr(result, "categories")
 

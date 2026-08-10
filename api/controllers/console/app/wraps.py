@@ -1,7 +1,7 @@
 """Controller decorators for console app resources.
 
 `get_app_model` still supports legacy handlers backed by Flask-SQLAlchemy's
-scoped session. Trial app handlers compose `get_app_model_with_trial` under
+scoped session. Preview handlers compose `get_previewable_app_model` under
 `controllers.common.session.with_session` and always reuse that request session.
 """
 
@@ -26,7 +26,7 @@ from services.app_service import AppService
 __all__ = [
     "agent_manage_required_for_agent_app",
     "get_app_model",
-    "get_app_model_with_trial",
+    "get_previewable_app_model",
     "with_session",
 ]
 
@@ -49,7 +49,7 @@ def _load_app_model_from_scoped_session(app_id: str) -> App | None:
     return app_model
 
 
-def _load_app_model_with_trial(session: Session, app_id: str) -> App | None:
+def _load_trial_registered_app_model(session: Session, app_id: str) -> App | None:
     """Load a normal app through its trial registration without applying current-tenant scope."""
     app_model = session.scalar(
         select(App).join(TrialApp, TrialApp.app_id == App.id).where(App.id == app_id, App.status == "normal").limit(1)
@@ -57,9 +57,9 @@ def _load_app_model_with_trial(session: Session, app_id: str) -> App | None:
     return app_model
 
 
-def _load_recommended_app_model(session: Session, app_id: str) -> App | None:
-    """Load a normal App in the request Session after catalog admission succeeds."""
-    if not application_services().recommended_app_queries.is_recommended(app_id):
+def _load_catalog_member_app_model(session: Session, app_id: str) -> App | None:
+    """Load a normal App after confirming membership in the recommended catalog."""
+    if not application_services().recommended_app_queries.is_in_catalog(app_id):
         return None
     return AppService.get_normal_app_by_id(app_id, session)
 
@@ -191,7 +191,7 @@ def get_app_model[**P, R](
 
 
 @overload
-def get_app_model_with_trial[**P, R](
+def get_previewable_app_model[**P, R](
     view: Callable[P, R],
     *,
     mode: AppMode | list[AppMode] | None = None,
@@ -199,19 +199,25 @@ def get_app_model_with_trial[**P, R](
 
 
 @overload
-def get_app_model_with_trial[**P, R](
+def get_previewable_app_model[**P, R](
     view: None = None,
     *,
     mode: AppMode | list[AppMode] | None = None,
 ) -> Callable[[Callable[P, R]], Callable[P, R]]: ...
 
 
-def get_app_model_with_trial[**P, R](
+def get_previewable_app_model[**P, R](
     view: Callable[P, R] | None = None,
     *,
     mode: AppMode | list[AppMode] | None = None,
 ) -> Callable[P, R] | Callable[[Callable[P, R]], Callable[P, R]]:
-    """Inject a trial-registered or recommended App using the Session supplied by `with_session`."""
+    """Inject an App authorized for read-only template preview.
+
+    Preview reads accept either an explicit TrialApp registration or membership
+    in the recommended catalog. This does not grant trial execution, which is
+    separately protected by TrialAppResource's feature, registration, and quota
+    checks.
+    """
 
     def decorator(view_func: Callable[P, R]) -> Callable[P, R]:
         @wraps(view_func)
@@ -226,10 +232,12 @@ def get_app_model_with_trial[**P, R](
 
             session = _get_injected_session(args)
             if session is None:
-                raise RuntimeError("get_app_model_with_trial requires @with_session")
-            app_model = _load_app_model_with_trial(session, app_id)
+                raise RuntimeError("get_previewable_app_model requires @with_session")
+            app_model = _load_trial_registered_app_model(session, app_id)
             if app_model is None:
-                app_model = _load_recommended_app_model(session, app_id)
+                # Catalog membership grants read-only preview access; it does
+                # not grant trial execution.
+                app_model = _load_catalog_member_app_model(session, app_id)
 
             if not app_model:
                 raise AppNotFoundError()

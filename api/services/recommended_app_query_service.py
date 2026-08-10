@@ -5,8 +5,6 @@ from typing import NamedTuple, Protocol
 
 from constants.languages import languages
 
-_BUILTIN_FALLBACK_LANGUAGE = "en-US"
-
 
 class RecommendedAppInfoRecord(NamedTuple):
     id: str
@@ -43,16 +41,16 @@ class RecommendedAppDetailRecord(NamedTuple):
     export_data: str
 
 
-class RecommendedAppCatalogGateway(Protocol):
-    def is_recommended(self, app_id: str) -> bool: ...
+class RecommendedAppCatalogQuery(Protocol):
+    """Read from the recommended-app catalog."""
 
     def list_recommended(self, language: str) -> RecommendedAppCatalogPage: ...
-
-    def list_builtin(self, language: str) -> RecommendedAppCatalogPage: ...
 
     def list_learn_dify(self, language: str) -> RecommendedAppCatalogPage: ...
 
     def get_detail(self, app_id: str) -> RecommendedAppDetailRecord | None: ...
+
+    def contains(self, app_id: str) -> bool: ...
 
 
 class TrialAppQuery(Protocol):
@@ -95,7 +93,7 @@ class RecommendedAppQueryService:
     def __init__(
         self,
         *,
-        catalog: RecommendedAppCatalogGateway,
+        catalog: RecommendedAppCatalogQuery,
         trial_apps: TrialAppQuery,
         is_trial_enabled: Callable[[], bool],
     ) -> None:
@@ -103,8 +101,8 @@ class RecommendedAppQueryService:
         self._trial_apps = trial_apps
         self._is_trial_enabled = is_trial_enabled
 
-    def is_recommended(self, app_id: str) -> bool:
-        return self._catalog.is_recommended(app_id)
+    def is_in_catalog(self, app_id: str) -> bool:
+        return self._catalog.contains(app_id)
 
     def list_recommended(
         self,
@@ -114,8 +112,6 @@ class RecommendedAppQueryService:
     ) -> RecommendedAppListResult:
         language = self._resolve_language(requested_language, interface_language)
         page = self._catalog.list_recommended(language)
-        if not page.recommended_apps:
-            page = self._catalog.list_builtin(_BUILTIN_FALLBACK_LANGUAGE)
 
         return RecommendedAppListResult(
             recommended_apps=self._with_trial_status(page.recommended_apps),
