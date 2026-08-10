@@ -4,7 +4,7 @@ from unittest.mock import create_autospec
 from pytest_mock import MockerFixture
 
 from enums.deployment_edition import DeploymentEdition
-from extensions.ext_application_services import AccountApplicationServices, ApplicationServices
+from extensions.ext_application_services import AccountServices, ApplicationServices
 from machinery.context import RequestContext
 from services.account_profile_service import AccountProfileService
 from services.entities.feature_entities import (
@@ -36,7 +36,7 @@ def _request_context() -> RequestContext:
 def _install_application_services(mocker: MockerFixture):
     feature_queries = create_autospec(FeatureQueryService, instance=True, spec_set=True)
     services = ApplicationServices(
-        accounts=AccountApplicationServices(
+        accounts=AccountServices(
             profile=create_autospec(AccountProfileService, instance=True, spec_set=True),
         ),
         explore_banner_queries=create_autospec(ExploreBannerQueryService, instance=True, spec_set=True),
