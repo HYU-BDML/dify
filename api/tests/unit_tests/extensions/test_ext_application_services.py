@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from enums.deployment_edition import DeploymentEdition
 from extensions.ext_application_services import build_application_services
 from extensions.ext_redis import RedisClientWrapper
+from repositories.account_unit_of_work import SQLAlchemyAccountUnitOfWorkFactory
 
 
 @pytest.mark.parametrize(
@@ -56,3 +57,17 @@ def test_build_application_services_does_not_construct_schema_manager(
         )
 
     schema_manager.assert_not_called()
+
+
+def test_build_application_services_wires_account_profile_unit_of_work(
+    sqlite_session_factory: sessionmaker[Session],
+) -> None:
+    services = build_application_services(
+        database_client=sqlite_session_factory,
+        deployment_edition=DeploymentEdition.COMMUNITY,
+        redis=MagicMock(spec=RedisClientWrapper),
+    )
+
+    unit_of_work = services.accounts.profile._unit_of_work
+    assert isinstance(unit_of_work, SQLAlchemyAccountUnitOfWorkFactory)
+    assert unit_of_work._session_factory is sqlite_session_factory
