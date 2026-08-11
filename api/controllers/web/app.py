@@ -10,7 +10,7 @@ from constants import HEADER_NAME_APP_CODE
 from controllers.common import fields
 from controllers.common.agent_app_parameters import get_published_agent_app_feature_dict_and_user_input_form
 from controllers.common.errors import InvalidArgumentError
-from controllers.common.fields import AccessModeResponse
+from controllers.common.fields import AccessModeResponse, BooleanResultResponse
 from controllers.common.schema import query_params_from_model, register_response_schema_models, register_schema_models
 from core.app.app_config.common.parameters_mapping import get_parameters_from_feature_dict
 from core.app.apps.agent_app.errors import AgentAppGeneratorError, AgentAppNotPublishedError
@@ -21,14 +21,11 @@ from libs.passport import PassportService
 from libs.token import extract_webapp_passport
 from models.model import App, AppMode, EndUser, load_annotation_reply_config
 from services.app_service import AppService
-from services.enterprise.enterprise_service import EnterpriseService
-from services.feature_service import FeatureService
 from services.webapp_access_query_service import (
     WebAppAccessAppNotFoundError,
     WebAppAccessReferenceRequiredError,
     WebAppAccessUnavailableError,
 )
-from services.webapp_auth_service import WebAppAuthService
 
 from . import web_ns
 from .error import AgentNotPublishedError, AppUnavailableError, WebAppAccessServiceUnavailableError, WebAppNotFoundError
@@ -63,7 +60,7 @@ register_response_schema_models(
     fields.Parameters,
     AppMetaResponse,
     AccessModeResponse,
-    fields.BooleanResultResponse,
+    BooleanResultResponse,
 )
 
 
@@ -188,19 +185,16 @@ class AppWebAuthPermission(Resource):
             500: "Internal Server Error",
         }
     )
-    @web_ns.response(200, "Success", web_ns.models[fields.BooleanResultResponse.__name__])
+    @web_ns.response(200, "Success", web_ns.models[BooleanResultResponse.__name__])
     def get(self):
-        user_id = "visitor"
         app_code = request.headers.get(HEADER_NAME_APP_CODE)
         app_id = request.args.get("appId")
         if not app_id or not app_code:
             raise ValueError("appId must be provided")
 
-        require_permission_check = WebAppAuthService.is_app_require_permission_check(
-            app_id=app_id, session=db.session()
-        )
-        if not require_permission_check:
-            return {"result": True}
+        webapp_access = application_services().webapp_access
+        if not webapp_access.requires_permission_check(app_id):
+            return dump_response(BooleanResultResponse, {"result": True})
 
         try:
             tk = extract_webapp_passport(app_code, request)
@@ -214,11 +208,7 @@ class AppWebAuthPermission(Resource):
             logger.exception("Unexpected error during auth verification")
             raise
 
-        features = FeatureService.get_system_features()
-        if not features.webapp_auth.enabled:
-            return {"result": True}
-
-        res = True
-        if WebAppAuthService.is_app_require_permission_check(app_id=app_id, session=db.session()):
-            res = EnterpriseService.WebAppAuth.is_user_allowed_to_access_webapp(str(user_id), app_id)
-        return {"result": res}
+        return dump_response(
+            BooleanResultResponse,
+            {"result": webapp_access.is_user_allowed(user_id=str(user_id), app_id=app_id)},
+        )
