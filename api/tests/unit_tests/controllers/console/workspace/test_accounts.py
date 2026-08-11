@@ -39,6 +39,7 @@ from controllers.console.workspace.error import (
     CurrentPasswordIncorrectError,
     InvalidAccountDeletionCodeError,
 )
+from enums import DeploymentEdition
 from extensions.storage.storage_type import StorageType
 from machinery.context import RequestContext
 from models import Account, AccountIntegrate, InvitationCode, Tenant, TenantAccountJoin
@@ -124,7 +125,7 @@ class TestAccountInitApi:
 
         with (
             app.test_request_context("/account/init", json=payload),
-            patch("controllers.console.workspace.account.dify_config.EDITION", "CLOUD"),
+            patch("controllers.console.workspace.account.dify_config.DEPLOYMENT_EDITION", DeploymentEdition.CLOUD),
             patch("controllers.console.workspace.account.db.session", sqlite_session),
         ):
             resp = method(api, account)

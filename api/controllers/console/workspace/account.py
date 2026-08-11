@@ -45,7 +45,6 @@ from controllers.console.workspace.error import (
 )
 from controllers.console.wraps import (
     account_initialization_required,
-    cloud_edition_billing_enabled,
     enable_change_email,
     enterprise_license_required,
     model_validate,
@@ -53,7 +52,7 @@ from controllers.console.wraps import (
     setup_required,
     with_current_user,
 )
-from enums.deployment_edition import DeploymentEdition
+from enums import DeploymentEdition
 from extensions.ext_application_services import application_services
 from extensions.ext_database import db
 from fields.base import ResponseModel
@@ -596,7 +595,6 @@ class EducationVerifyApi(Resource):
     @login_required
     @account_initialization_required
     @only_edition_cloud
-    @cloud_edition_billing_enabled
     @console_ns.response(HTTPStatus.OK, "Success", console_ns.models[EducationVerifyResponse.__name__])
     @with_current_user
     def get(self, account: Account):
@@ -614,7 +612,6 @@ class EducationApi(Resource):
     @login_required
     @account_initialization_required
     @only_edition_cloud
-    @cloud_edition_billing_enabled
     @with_current_user
     def post(self, account: Account):
         raise EducationDiscountTemporarilyPausedError()
@@ -623,7 +620,6 @@ class EducationApi(Resource):
     @login_required
     @account_initialization_required
     @only_edition_cloud
-    @cloud_edition_billing_enabled
     @console_ns.response(HTTPStatus.OK, "Success", console_ns.models[EducationStatusResponse.__name__])
     @with_current_user
     def get(self, account: Account):
@@ -641,7 +637,6 @@ class EducationAutoCompleteApi(Resource):
     @login_required
     @account_initialization_required
     @only_edition_cloud
-    @cloud_edition_billing_enabled
     @console_ns.response(HTTPStatus.OK, "Success", console_ns.models[EducationAutocompleteResponse.__name__])
     def get(self):
         payload = request.args.to_dict(flat=True)
