@@ -445,6 +445,9 @@ class BedrockRetrievalApi(Resource):
     @console_ns.doc(description="Bedrock retrieval test (internal use only)")
     @console_ns.expect(console_ns.models[BedrockRetrievalPayload.__name__])
     @console_ns.response(200, "Bedrock retrieval test completed", console_ns.models[BedrockRetrievalResponse.__name__])
+    @setup_required
+    @login_required
+    @account_initialization_required
     def post(self):
         payload = BedrockRetrievalPayload.model_validate(console_ns.payload or {})
 

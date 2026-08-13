@@ -629,6 +629,10 @@ class DatasetDocumentSegmentBatchImportApi(Resource):
         dataset = DatasetService.get_dataset(dataset_id_str, session)
         if not dataset:
             raise NotFound("Dataset not found.")
+        try:
+            DatasetService.check_dataset_permission(dataset, current_user, session)
+        except services.errors.account.NoPermissionError as e:
+            raise Forbidden(str(e))
         # check document
         document_id_str = str(document_id)
         document = DocumentService.get_document(dataset_id_str, document_id_str, session=session)
@@ -754,15 +758,28 @@ class ChildChunkAddApi(Resource):
     @setup_required
     @login_required
     @account_initialization_required
+    @with_current_user
     @with_current_tenant_id
     @rbac_permission_required(RBACResourceScope.DATASET, RBACPermission.DATASET_READONLY)
     @with_session(write=False)
-    def get(self, session: Session, current_tenant_id: str, dataset_id: UUID, document_id: UUID, segment_id: UUID):
+    def get(
+        self,
+        session: Session,
+        current_tenant_id: str,
+        current_user: Account,
+        dataset_id: UUID,
+        document_id: UUID,
+        segment_id: UUID,
+    ):
         # check dataset
         dataset_id_str = str(dataset_id)
         dataset = DatasetService.get_dataset(dataset_id_str, session)
         if not dataset:
             raise NotFound("Dataset not found.")
+        try:
+            DatasetService.check_dataset_permission(dataset, current_user, session)
+        except services.errors.account.NoPermissionError as e:
+            raise Forbidden(str(e))
         # check user's model setting
         DatasetService.check_dataset_model_setting(dataset)
         # check document

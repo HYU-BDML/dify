@@ -802,10 +802,21 @@ class DatasetUseCheckApi(Resource):
     @setup_required
     @login_required
     @account_initialization_required
+    @with_current_user
     @rbac_permission_required(RBACResourceScope.DATASET, RBACPermission.DATASET_READONLY)
     @with_session(write=False)
-    def get(self, session: Session, dataset_id: UUID):
+    def get(self, session: Session, current_user: Account, dataset_id: UUID):
         dataset_id_str = str(dataset_id)
+
+        # S0-9 HIGH #4: use-check 는 타 tenant 존재 오라클이었다 — dataset_use_check 는
+        # tenant/owner 검사를 하지 않으므로 컨트롤러에서 소유권을 강제한다(DatasetQueryApi.get 과 동형).
+        dataset = DatasetService.get_dataset(dataset_id_str, session)
+        if dataset is None:
+            raise NotFound("Dataset not found.")
+        try:
+            DatasetService.check_dataset_permission(dataset, current_user, session)
+        except services.errors.account.NoPermissionError as e:
+            raise Forbidden(str(e))
 
         dataset_is_using = DatasetService.dataset_use_check(dataset_id_str, session)
         return UsageCheckResponse(is_using=dataset_is_using).model_dump(mode="json"), 200
@@ -1168,10 +1179,19 @@ class DatasetEnableApiApi(Resource):
     @login_required
     @account_initialization_required
     @console_ns.response(200, "Success", console_ns.models[SimpleResultResponse.__name__])
+    @with_current_user
     @rbac_permission_required(RBACResourceScope.DATASET, RBACPermission.DATASET_EDIT)
     @with_session
-    def post(self, session: Session, dataset_id: UUID, status: str):
+    def post(self, session: Session, current_user: Account, dataset_id: UUID, status: str):
         dataset_id_str = str(dataset_id)
+
+        dataset = DatasetService.get_dataset(dataset_id_str, session)
+        if dataset is None:
+            raise NotFound("Dataset not found.")
+        try:
+            DatasetService.check_dataset_permission(dataset, current_user, session)
+        except services.errors.account.NoPermissionError as e:
+            raise Forbidden(str(e))
 
         DatasetService.update_dataset_api_status(dataset_id_str, status == "enable", session)
 
@@ -1239,13 +1259,18 @@ class DatasetErrorDocs(Resource):
     @setup_required
     @login_required
     @account_initialization_required
+    @with_current_user
     @rbac_permission_required(RBACResourceScope.DATASET, RBACPermission.DATASET_READONLY)
     @with_session(write=False)
-    def get(self, session: Session, dataset_id: UUID):
+    def get(self, session: Session, current_user: Account, dataset_id: UUID):
         dataset_id_str = str(dataset_id)
         dataset = DatasetService.get_dataset(dataset_id_str, session)
         if dataset is None:
             raise NotFound("Dataset not found.")
+        try:
+            DatasetService.check_dataset_permission(dataset, current_user, session)
+        except services.errors.account.NoPermissionError as e:
+            raise Forbidden(str(e))
         results = DocumentService.get_error_documents_by_dataset_id(dataset_id_str, session)
 
         return dump_response(ErrorDocsResponse, {"data": results, "total": len(results)}), 200
@@ -1298,12 +1323,17 @@ class DatasetAutoDisableLogApi(Resource):
     @setup_required
     @login_required
     @account_initialization_required
+    @with_current_user
     @rbac_permission_required(RBACResourceScope.DATASET, RBACPermission.DATASET_READONLY)
     @with_session(write=False)
-    def get(self, session: Session, dataset_id: UUID):
+    def get(self, session: Session, current_user: Account, dataset_id: UUID):
         dataset_id_str = str(dataset_id)
         dataset = DatasetService.get_dataset(dataset_id_str, session)
         if dataset is None:
             raise NotFound("Dataset not found.")
+        try:
+            DatasetService.check_dataset_permission(dataset, current_user, session)
+        except services.errors.account.NoPermissionError as e:
+            raise Forbidden(str(e))
         auto_disable_logs = DatasetService.get_dataset_auto_disable_logs(dataset_id_str, session)
         return dump_response(AutoDisableLogsResponse, auto_disable_logs), 200

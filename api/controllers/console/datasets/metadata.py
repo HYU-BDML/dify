@@ -80,13 +80,15 @@ class DatasetMetadataCreateApi(Resource):
     @console_ns.response(
         200, "Metadata retrieved successfully", console_ns.models[DatasetMetadataListResponse.__name__]
     )
+    @with_current_user
     @rbac_permission_required(RBACResourceScope.DATASET, RBACPermission.DATASET_CREATE_AND_MANAGEMENT)
     @with_session(write=False)
-    def get(self, session: Session, dataset_id: UUID):
+    def get(self, session: Session, current_user: Account, dataset_id: UUID):
         dataset_id_str = str(dataset_id)
         dataset = DatasetService.get_dataset(dataset_id_str, session)
         if dataset is None:
             raise NotFound("Dataset not found.")
+        DatasetService.check_dataset_permission(dataset, current_user, session)
         metadata = MetadataService.get_dataset_metadatas(dataset, session)
         return dump_response(DatasetMetadataListResponse, metadata), 200
 
