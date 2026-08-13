@@ -26,6 +26,7 @@ from libs.datetime_utils import naive_utc_now
 from libs.login import current_user
 from libs.pagination import PaginatedResult, paginate_query
 from models import Account, AppStar
+from models.account import TenantAccountRole
 from models.agent import (
     APP_BACKED_AGENT_SOURCES,
     Agent,
@@ -189,6 +190,15 @@ class AppService:
         user_id: str, tenant_id: str, params: AppListBaseParams, session: Session
     ) -> list[sa.ColumnElement[bool]]:
         filters = [App.tenant_id == tenant_id, App.is_universal == False]
+
+        # OWN-01b: mandatory ownership isolation. Non-privileged callers may only
+        # see apps they maintain; owner/admin retain full-tenant read for
+        # administration. Applied independently of RBAC_ENABLED so the list is
+        # never left unguarded. Client-side filters below narrow on top of this
+        # base predicate; they must never replace it.
+        current_role = getattr(current_user, "current_role", None)
+        if not TenantAccountRole.is_privileged_role(current_role):
+            filters.append(App.maintainer == user_id)
 
         if params.mode == "workflow":
             filters.append(App.mode == AppMode.WORKFLOW)
