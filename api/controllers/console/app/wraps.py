@@ -19,6 +19,7 @@ from controllers.console.app.error import AppNotFoundError
 from extensions.ext_database import db
 from libs.login import current_account_with_tenant
 from models import App, AppMode, TrialApp
+from models.account import TenantAccountRole
 from models.agent import AgentScope
 from services.recommended_app_service import RecommendedAppService
 
@@ -30,21 +31,31 @@ __all__ = [
 ]
 
 
-def _load_app_model(session: Session, app_id: str) -> App | None:
+def _owner_scope_conditions(app_id: str, owner_only: bool):
+    """App by-id 조회의 소유권 격리 조건을 만든다 (OWN-01, 정오 결정 2026-08-14).
+
+    소유권 축은 `maintainer`(양도 가능 — 멤버 제거 시 owner 로 이전, account_service.py:1776-1783)이고
+    `created_by` 는 불변 작성자 기록으로 남긴다. 정책:
+    - read (owner_only=False): 소유자 또는 privileged(owner/admin) — 관리자는 운영 지원차 조회 가능
+    - mutation (owner_only=True): 소유자만 — 관리자도 남의 App 을 수정·삭제·게시할 수 없다
+    소유권 불일치는 owner 절이 안 맞아 None → AppNotFoundError(404)로 존재를 숨긴다.
+    """
+    user, current_tenant_id = current_account_with_tenant()
+    conds = [App.id == app_id, App.tenant_id == current_tenant_id, App.status == "normal"]
+    if owner_only or not TenantAccountRole.is_privileged_role(user.current_role):
+        conds.append(App.maintainer == user.id)
+    return conds
+
+
+def _load_app_model(session: Session, app_id: str, owner_only: bool = False) -> App | None:
     """Load the tenant-scoped app row with the request session owned by `with_session`."""
-    _, current_tenant_id = current_account_with_tenant()
-    app_model = session.scalar(
-        select(App).where(App.id == app_id, App.tenant_id == current_tenant_id, App.status == "normal").limit(1)
-    )
+    app_model = session.scalar(select(App).where(*_owner_scope_conditions(app_id, owner_only)).limit(1))
     return app_model
 
 
-def _load_app_model_from_scoped_session(app_id: str) -> App | None:
+def _load_app_model_from_scoped_session(app_id: str, owner_only: bool = False) -> App | None:
     """Load the app row for legacy handlers that have not adopted request session injection yet."""
-    _, current_tenant_id = current_account_with_tenant()
-    app_model = db.session.scalar(
-        select(App).where(App.id == app_id, App.tenant_id == current_tenant_id, App.status == "normal").limit(1)
-    )
+    app_model = db.session.scalar(select(App).where(*_owner_scope_conditions(app_id, owner_only)).limit(1))
     return app_model
 
 
@@ -115,6 +126,7 @@ def get_app_model[**P, R](
     view: Callable[P, R],
     *,
     mode: AppMode | list[AppMode] | None = None,
+    owner_only: bool = False,
 ) -> Callable[P, R]: ...
 
 
@@ -123,6 +135,7 @@ def get_app_model[**P, R](
     view: None = None,
     *,
     mode: AppMode | list[AppMode] | None = None,
+    owner_only: bool = False,
 ) -> Callable[[Callable[P, R]], Callable[P, R]]: ...
 
 
@@ -130,12 +143,17 @@ def get_app_model[**P, R](
     view: Callable[P, R] | None = None,
     *,
     mode: AppMode | list[AppMode] | None = None,
+    owner_only: bool = False,
 ) -> Callable[P, R] | Callable[[Callable[P, R]], Callable[P, R]]:
     """Inject the App model for handlers that receive an `app_id` path parameter.
 
     New handlers may compose `@with_session` above this decorator so the app row
     is loaded through the same request-scoped session used by the controller.
     Existing handlers continue to work through `db.session` until migrated.
+
+    ``owner_only=True`` (mutation 라우트: 수정·삭제·게시·API key·draft 저장)는 소유자
+    (`maintainer`)만 통과시킨다 — 관리자도 남의 App 을 변경할 수 없다. 기본(read)은
+    관리자에게 조회를 허용한다. OWN-01, 정오 결정 2026-08-14.
     """
 
     def decorator(view_func: Callable[P, R]) -> Callable[P, R]:
@@ -151,9 +169,9 @@ def get_app_model[**P, R](
 
             session = _get_injected_session(args)
             if session is None:
-                app_model = _load_app_model_from_scoped_session(app_id)
+                app_model = _load_app_model_from_scoped_session(app_id, owner_only)
             else:
-                app_model = _load_app_model(session, app_id)
+                app_model = _load_app_model(session, app_id, owner_only)
 
             if not app_model:
                 raise AppNotFoundError()
