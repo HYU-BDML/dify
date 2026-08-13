@@ -24,6 +24,7 @@ class TenantAccountRole(enum.StrEnum):
     EDITOR = "editor"
     NORMAL = "normal"
     DATASET_OPERATOR = "dataset_operator"
+    MAKER = "maker"
 
     @staticmethod
     def is_valid_role(role: str) -> bool:
@@ -35,6 +36,7 @@ class TenantAccountRole(enum.StrEnum):
             TenantAccountRole.EDITOR,
             TenantAccountRole.NORMAL,
             TenantAccountRole.DATASET_OPERATOR,
+            TenantAccountRole.MAKER,
         }
 
     @staticmethod
@@ -58,13 +60,19 @@ class TenantAccountRole(enum.StrEnum):
             TenantAccountRole.EDITOR,
             TenantAccountRole.NORMAL,
             TenantAccountRole.DATASET_OPERATOR,
+            TenantAccountRole.MAKER,
         }
 
     @staticmethod
     def is_editing_role(role: Optional["TenantAccountRole"]) -> bool:
         if not role:
             return False
-        return role in {TenantAccountRole.OWNER, TenantAccountRole.ADMIN, TenantAccountRole.EDITOR}
+        return role in {
+            TenantAccountRole.OWNER,
+            TenantAccountRole.ADMIN,
+            TenantAccountRole.EDITOR,
+            TenantAccountRole.MAKER,
+        }
 
     @staticmethod
     def is_dataset_edit_role(role: Optional["TenantAccountRole"]) -> bool:
@@ -75,6 +83,7 @@ class TenantAccountRole(enum.StrEnum):
             TenantAccountRole.ADMIN,
             TenantAccountRole.EDITOR,
             TenantAccountRole.DATASET_OPERATOR,
+            TenantAccountRole.MAKER,
         }
 
 

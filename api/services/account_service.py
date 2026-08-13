@@ -1360,7 +1360,7 @@ class TenantService:
 
     @staticmethod
     def create_tenant_member(
-        tenant: Tenant, account: Account, session: Session, role: str = "normal"
+        tenant: Tenant, account: Account, session: Session, role: str = "maker"
     ) -> TenantAccountJoin:
         """Create tenant member"""
         if role == TenantAccountRole.OWNER:
