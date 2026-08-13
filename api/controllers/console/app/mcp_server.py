@@ -109,7 +109,7 @@ class AppMCPServerController(Resource):
     @edit_permission_required
     @rbac_permission_required(RBACResourceScope.APP, RBACPermission.APP_EDIT)
     @with_current_tenant_id
-    @get_app_model
+    @get_app_model(owner_only=True)
     def post(self, current_tenant_id: str, app_model: App):
         payload = MCPServerCreatePayload.model_validate(console_ns.payload or {})
 
@@ -144,7 +144,7 @@ class AppMCPServerController(Resource):
     @account_initialization_required
     @edit_permission_required
     @rbac_permission_required(RBACResourceScope.APP, RBACPermission.APP_EDIT)
-    @get_app_model
+    @get_app_model(owner_only=True)
     def put(self, app_model: App):
         payload = MCPServerUpdatePayload.model_validate(console_ns.payload or {})
         app_ref = AppRefService.create_app_ref(app_model)

@@ -95,7 +95,7 @@ class ModelConfigResource(Resource):
     @with_current_user_id
     @with_current_tenant_id
     @with_session
-    @get_app_model(mode=[AppMode.AGENT_CHAT, AppMode.CHAT, AppMode.COMPLETION])
+    @get_app_model(mode=[AppMode.AGENT_CHAT, AppMode.CHAT, AppMode.COMPLETION], owner_only=True)
     def post(self, session: Session, current_tenant_id: str, current_user_id: str, app_model: App):
         """Modify the app model config and dataset joins in one request transaction."""
         # validate config

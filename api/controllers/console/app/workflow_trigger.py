@@ -174,7 +174,7 @@ class AppTriggerEnableApi(Resource):
     @rbac_permission_required(RBACResourceScope.APP, RBACPermission.APP_EDIT)
     @console_ns.response(200, "Success", console_ns.models[WorkflowTriggerResponse.__name__])
     @with_current_tenant_id
-    @get_app_model(mode=AppMode.WORKFLOW)
+    @get_app_model(mode=AppMode.WORKFLOW, owner_only=True)
     def post(self, current_tenant_id: str, app_model: App):
         """Update app trigger (enable/disable)"""
         args = ParserEnable.model_validate(console_ns.payload)

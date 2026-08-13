@@ -907,7 +907,7 @@ class AppApi(Resource):
     @rbac_permission_required(RBACResourceScope.APP, RBACPermission.APP_EDIT)
     @agent_manage_required_for_agent_app
     @with_session
-    @get_app_model(mode=None)
+    @get_app_model(mode=None, owner_only=True)
     def put(self, session: Session, app_model: App):
         """Update app"""
         args = UpdateAppPayload.model_validate(console_ns.payload)
@@ -942,7 +942,7 @@ class AppApi(Resource):
     @rbac_permission_required(RBACResourceScope.APP, RBACPermission.APP_DELETE)
     @agent_manage_required_for_agent_app
     @with_session
-    @get_app_model
+    @get_app_model(owner_only=True)
     def delete(self, session: Session, app_model: App):
         """Delete app"""
         app_service = AppService()
@@ -1101,7 +1101,7 @@ class AppNameApi(Resource):
     @rbac_permission_required(RBACResourceScope.APP, RBACPermission.APP_EDIT)
     @agent_manage_required_for_agent_app
     @with_session
-    @get_app_model(mode=None)
+    @get_app_model(mode=None, owner_only=True)
     def post(self, session: Session, app_model: App):
         args = AppNamePayload.model_validate(console_ns.payload)
 
@@ -1129,7 +1129,7 @@ class AppIconApi(Resource):
     @rbac_permission_required(RBACResourceScope.APP, RBACPermission.APP_EDIT)
     @agent_manage_required_for_agent_app
     @with_session
-    @get_app_model(mode=None)
+    @get_app_model(mode=None, owner_only=True)
     def post(self, session: Session, app_model: App):
         args = AppIconPayload.model_validate(console_ns.payload or {})
 
@@ -1163,7 +1163,7 @@ class AppSiteStatus(Resource):
     @rbac_permission_required(RBACResourceScope.APP, RBACPermission.APP_RELEASE_AND_VERSION)
     @agent_manage_required_for_agent_app
     @with_session
-    @get_app_model(mode=None)
+    @get_app_model(mode=None, owner_only=True)
     def post(self, session: Session, app_model: App):
         args = AppSiteStatusPayload.model_validate(console_ns.payload)
 
@@ -1191,7 +1191,7 @@ class AppApiStatus(Resource):
     @rbac_permission_required(RBACResourceScope.APP, RBACPermission.APP_RELEASE_AND_VERSION)
     @agent_manage_required_for_agent_app
     @with_session
-    @get_app_model(mode=None)
+    @get_app_model(mode=None, owner_only=True)
     def post(self, session: Session, app_model: App):
         args = AppApiStatusPayload.model_validate(console_ns.payload)
 
@@ -1241,7 +1241,7 @@ class AppTraceApi(Resource):
     @account_initialization_required
     @edit_permission_required
     @rbac_permission_required(RBACResourceScope.APP, RBACPermission.APP_TRACING_CONFIG)
-    @get_app_model
+    @get_app_model(owner_only=True)
     def post(self, app_model: App):
         # add app trace
         args = AppTracePayload.model_validate(console_ns.payload)

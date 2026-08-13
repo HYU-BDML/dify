@@ -103,7 +103,7 @@ class TraceAppConfigApi(Resource):
     @account_initialization_required
     @edit_permission_required
     @rbac_permission_required(RBACResourceScope.APP, RBACPermission.APP_TRACING_CONFIG)
-    @get_app_model
+    @get_app_model(owner_only=True)
     def post(self, app_model: App):
         """Create a new trace app configuration"""
         args = TraceConfigPayload.model_validate(console_ns.payload)
@@ -139,7 +139,7 @@ class TraceAppConfigApi(Resource):
     @account_initialization_required
     @edit_permission_required
     @rbac_permission_required(RBACResourceScope.APP, RBACPermission.APP_TRACING_CONFIG)
-    @get_app_model
+    @get_app_model(owner_only=True)
     def patch(self, app_model: App):
         """Update an existing trace app configuration"""
         args = TraceConfigPayload.model_validate(console_ns.payload)
@@ -169,7 +169,7 @@ class TraceAppConfigApi(Resource):
     @account_initialization_required
     @edit_permission_required
     @rbac_permission_required(RBACResourceScope.APP, RBACPermission.APP_TRACING_CONFIG)
-    @get_app_model
+    @get_app_model(owner_only=True)
     def delete(self, app_model: App):
         """Delete an existing trace app configuration"""
         args = TraceProviderQuery.model_validate(request.args.to_dict(flat=True))

@@ -558,7 +558,7 @@ class DraftWorkflowApi(Resource):
     @setup_required
     @login_required
     @account_initialization_required
-    @get_app_model(mode=[AppMode.ADVANCED_CHAT, AppMode.WORKFLOW])
+    @get_app_model(mode=[AppMode.ADVANCED_CHAT, AppMode.WORKFLOW], owner_only=True)
     @console_ns.doc("sync_draft_workflow")
     @console_ns.doc(description="Sync draft workflow configuration")
     @console_ns.expect(console_ns.models[SyncDraftWorkflowPayload.__name__])
@@ -1235,7 +1235,7 @@ class PublishedWorkflowApi(Resource):
     @login_required
     @account_initialization_required
     @rbac_permission_required(RBACResourceScope.APP, RBACPermission.APP_RELEASE_AND_VERSION)
-    @get_app_model(mode=[AppMode.ADVANCED_CHAT, AppMode.WORKFLOW])
+    @get_app_model(mode=[AppMode.ADVANCED_CHAT, AppMode.WORKFLOW], owner_only=True)
     @with_current_user
     @edit_permission_required
     def post(self, current_user: Account, app_model: App):
@@ -1400,7 +1400,7 @@ class WorkflowFeaturesApi(Resource):
     @setup_required
     @login_required
     @account_initialization_required
-    @get_app_model(mode=[AppMode.ADVANCED_CHAT, AppMode.WORKFLOW])
+    @get_app_model(mode=[AppMode.ADVANCED_CHAT, AppMode.WORKFLOW], owner_only=True)
     @with_current_user
     @edit_permission_required
     @rbac_permission_required(RBACResourceScope.APP, RBACPermission.APP_VIEW_LAYOUT)
@@ -1481,7 +1481,7 @@ class DraftWorkflowRestoreApi(Resource):
     @setup_required
     @login_required
     @account_initialization_required
-    @get_app_model(mode=[AppMode.ADVANCED_CHAT, AppMode.WORKFLOW])
+    @get_app_model(mode=[AppMode.ADVANCED_CHAT, AppMode.WORKFLOW], owner_only=True)
     @with_current_user
     @edit_permission_required
     @rbac_permission_required(RBACResourceScope.APP, RBACPermission.APP_RELEASE_AND_VERSION)
@@ -1521,7 +1521,7 @@ class WorkflowByIdApi(Resource):
     @setup_required
     @login_required
     @account_initialization_required
-    @get_app_model(mode=[AppMode.ADVANCED_CHAT, AppMode.WORKFLOW])
+    @get_app_model(mode=[AppMode.ADVANCED_CHAT, AppMode.WORKFLOW], owner_only=True)
     @with_current_user
     @edit_permission_required
     @rbac_permission_required(RBACResourceScope.APP, RBACPermission.APP_EDIT)
@@ -1563,7 +1563,7 @@ class WorkflowByIdApi(Resource):
     @setup_required
     @login_required
     @account_initialization_required
-    @get_app_model(mode=[AppMode.ADVANCED_CHAT, AppMode.WORKFLOW])
+    @get_app_model(mode=[AppMode.ADVANCED_CHAT, AppMode.WORKFLOW], owner_only=True)
     @edit_permission_required
     @rbac_permission_required(RBACResourceScope.APP, RBACPermission.APP_EDIT)
     @console_ns.response(204, "Workflow deleted successfully")

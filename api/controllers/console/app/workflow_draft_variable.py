@@ -629,7 +629,7 @@ class ConversationVariableCollectionApi(Resource):
     @edit_permission_required
     @rbac_permission_required(RBACResourceScope.APP, RBACPermission.APP_EDIT)
     @with_current_user
-    @get_app_model(mode=AppMode.ADVANCED_CHAT)
+    @get_app_model(mode=AppMode.ADVANCED_CHAT, owner_only=True)
     def post(self, current_user: Account, app_model: App):
         payload = ConversationVariableUpdatePayload.model_validate(console_ns.payload or {})
 
@@ -724,7 +724,7 @@ class EnvironmentVariableCollectionApi(Resource):
     @edit_permission_required
     @rbac_permission_required(RBACResourceScope.APP, RBACPermission.APP_EDIT)
     @with_current_user
-    @get_app_model(mode=[AppMode.ADVANCED_CHAT, AppMode.WORKFLOW])
+    @get_app_model(mode=[AppMode.ADVANCED_CHAT, AppMode.WORKFLOW], owner_only=True)
     def post(self, current_user: Account, app_model: App):
         payload = EnvironmentVariableUpdatePayload.model_validate(console_ns.payload or {})
 
