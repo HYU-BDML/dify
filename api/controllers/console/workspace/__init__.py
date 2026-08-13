@@ -35,7 +35,14 @@ def plugin_permission_required(
                 )
 
                 if not permission:
-                    # no permission set, allow access for everyone
+                    # no permission row set: fail closed with the default policy
+                    # (install limited to admins, debug denied) instead of
+                    # allowing everyone, mirroring TenantPluginInstallPermission.ADMINS
+                    # and TenantPluginDebugPermission.NOBODY
+                    if install_required and not user.is_admin_or_owner:
+                        raise Forbidden()
+                    if debug_required:
+                        raise Forbidden()
                     return view(*args, **kwargs)
 
                 if install_required:

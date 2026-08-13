@@ -150,6 +150,7 @@ class ModelProviderCredentialApi(Resource):
     )
     @setup_required
     @login_required
+    @is_admin_or_owner_required
     @account_initialization_required
     @with_current_tenant_id
     def get(self, tenant_id: str, provider: str):
