@@ -1,7 +1,9 @@
 import logging
+from collections.abc import Callable
+from functools import wraps
 
 import flask_login
-from flask import make_response, request
+from flask import abort, make_response, request
 from flask_restx import Resource
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
@@ -68,6 +70,30 @@ from services.errors.workspace import WorkSpaceNotAllowedCreateError, Workspaces
 from services.feature_service import FeatureService
 
 logger = logging.getLogger(__name__)
+
+
+def email_code_login_enabled[**P, R](view: Callable[P, R]) -> Callable[P, R]:
+    """Seal passwordless email-code login (and password-reset) unless explicitly enabled.
+
+    Boram fork security patch (CONFIG-01): the ``/email-code-login`` routes shipped with
+    only ``@setup_required``, so any account could obtain a console session by e-mail code,
+    bypassing the Firebase exchange that is the sole intended login path. This mirrors the
+    existing ``email_password_login_enabled`` gate in ``controllers.console.wraps`` but keys
+    off ``enable_email_code_login`` (``ENABLE_EMAIL_CODE_LOGIN``, default OFF). It lives here
+    rather than in ``wraps.py`` to keep the seal local to this fork and resilient to upstream
+    merges of the shared wraps module.
+    """
+
+    @wraps(view)
+    def decorated(*args: P.args, **kwargs: P.kwargs):
+        features = FeatureService.get_system_features()
+        if features.enable_email_code_login:
+            return view(*args, **kwargs)
+
+        # otherwise, return 403
+        abort(403)
+
+    return decorated
 
 
 class LoginPayload(LoginPayloadBase):
@@ -213,6 +239,7 @@ class LogoutApi(Resource):
 class ResetPasswordSendEmailApi(Resource):
     @setup_required
     @email_password_login_enabled
+    @email_code_login_enabled
     @console_ns.expect(console_ns.models[EmailPayload.__name__])
     @console_ns.response(200, "Success", console_ns.models[SimpleResultDataResponse.__name__])
     def post(self):
@@ -241,6 +268,7 @@ class ResetPasswordSendEmailApi(Resource):
 @console_ns.route("/email-code-login")
 class EmailCodeLoginSendEmailApi(Resource):
     @setup_required
+    @email_code_login_enabled
     @console_ns.expect(console_ns.models[EmailPayload.__name__])
     @console_ns.response(200, "Success", console_ns.models[SimpleResultDataResponse.__name__])
     def post(self):
@@ -274,6 +302,7 @@ class EmailCodeLoginSendEmailApi(Resource):
 @console_ns.route("/email-code-login/validity")
 class EmailCodeLoginApi(Resource):
     @setup_required
+    @email_code_login_enabled
     @console_ns.expect(console_ns.models[EmailCodeLoginPayload.__name__])
     @console_ns.response(200, "Success", console_ns.models[SimpleResultResponse.__name__])
     @decrypt_code_field

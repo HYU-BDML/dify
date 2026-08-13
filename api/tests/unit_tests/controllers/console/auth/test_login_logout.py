@@ -460,8 +460,10 @@ class TestLoginApi:
     @patch("controllers.console.auth.login.AccountService.get_email_code_login_data")
     @patch("controllers.console.auth.login.AccountService.revoke_email_code_login_token")
     @patch("controllers.console.auth.login._get_account_with_case_fallback")
+    @patch("controllers.console.auth.login.FeatureService.get_system_features")
     def test_email_code_login_logs_banned_account(
         self,
+        mock_get_features: MagicMock,
         mock_get_account: MagicMock,
         mock_revoke_token: MagicMock,
         mock_get_token_data: MagicMock,
@@ -469,6 +471,7 @@ class TestLoginApi:
         app: Flask,
         caplog: pytest.LogCaptureFixture,
     ):
+        mock_get_features.return_value.enable_email_code_login = True
         mock_get_token_data.return_value = {"email": "User@Example.com", "code": "123456"}
         mock_get_account.side_effect = Unauthorized("Account is banned.")
 
@@ -494,8 +497,10 @@ class TestLoginApi:
     @patch("controllers.console.auth.login.AccountService.get_email_code_login_data")
     @patch("controllers.console.auth.login.AccountService.revoke_email_code_login_token")
     @patch("controllers.console.auth.login._get_account_with_case_fallback")
+    @patch("controllers.console.auth.login.FeatureService.get_system_features")
     def test_email_code_login_fails_when_seats_limit_exceeded(
         self,
+        mock_get_features: MagicMock,
         mock_get_account: MagicMock,
         mock_revoke_token: MagicMock,
         mock_get_token_data: MagicMock,
@@ -512,6 +517,7 @@ class TestLoginApi:
         - the service-layer SeatsLimitExceededError is translated to the SeatsLimitExceeded HTTP error
         """
         # Arrange: valid token, no existing account -> account-creation path
+        mock_get_features.return_value.enable_email_code_login = True
         mock_get_token_data.return_value = {"email": "User@Example.com", "code": "123456"}
         mock_get_account.return_value = None
         mock_create_account.side_effect = SeatsLimitExceededError("licensed seats limit exceeded")
