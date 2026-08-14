@@ -34,9 +34,27 @@
 - **hit_testing_base.py** — 무변경(91 은 96 에서 이미 검사).
 - 스타일: datasets.py 는 403(try/except), metadata·data_source 는 400(bare `NoPermissionError`). 둘 다 IDOR 를 막음. 통일 필요 시 후속.
 
-## 다음 마일스톤 (설계 필요 — 아직)
-- AUTH-01: Firebase ID token → Dify 세션 교환 (자동 계정 생성 = Workspace bootstrap 하나의 패치)
-- OWN-01: owner 축 신설 — `get_app_model` 에 `created_by` (현재 tenant 만 검사, owner 축 없음)
+## OWN-01 — App 소유권 격리 (완료, 커밋 1c24a5f·914979·7a3708)
+소유권 축은 **`maintainer`**(양도 가능 — 멤버 제거 시 owner 로 이전, `account_service.py:1776-1783`). `created_by` 는 불변 작성자 기록. read 는 소유자 OR privileged(owner/admin), mutation 은 소유자만. 정오 결정 2026-08-14.
+- **OWN-01a** `controllers/console/app/wraps.py` — 두 로더에 `App.maintainer == current_user.id` (privileged 는 read bypass). `owner_only` 파라미터 신설. 불일치는 `AppNotFoundError`(404). 라이브 검증: A(maker)→B App 404, ops(owner)→B 200, B→자기 200.
+- **OWN-01b** `services/app_service.py:_build_app_list_filters` — 목록 base predicate(non-privileged 면 `maintainer==me`). RBAC 무관, fail-closed. paginate/recent/starred 단일 소스.
+- **OWN-01 mutation** `controllers/console/app/` 24개 mutation 라우트에 `@get_app_model(owner_only=True)`. GET·실행·copy/export·협업코멘트는 admin readable 유지.
+- 이스컬레이션(별도): `app.py:1073` publish-to-external(정오 판단), `workflow_draft_variable.py` 공유 `_api_prerequisite` 5개 mutation(read/write 분리 필요), 멤버관리(`invite-email`)는 upstream 부터 admin 게이트 부재.
+
+## 다음 마일스톤 — AUTH-01 (설계 확정, 구현 대기)
+Firebase ID token → Dify 콘솔 세션 교환. **기존 OAuth 컨트롤러(`oauth.py`)의 near-clone.**
+- 엔드포인트: `POST /console/api/firebase-exchange` (신규 `controllers/console/auth/firebase_exchange.py`, `__init__.py:86-95` 등록). `@setup_required` 만.
+- **`firebase-admin` 패키지 추가 필요** (`pyproject.toml` 에 없음 → 이미지 rebuild 전제).
+- 검증: `verify_id_token(check_revoked=True)` + `email_verified` + **정확 도메인**(`rsplit("@",1)[1].lower()=="hanyang.ac.kr"`, endswith 금지).
+- uid 매핑: 기존 `AccountIntegrate` + `link_account_integrate("firebase",...)` — **새 컬럼 불필요**.
+- 프로비저닝: `create_account(is_setup=True)`(계정만, workspace 안 만듦) → `create_tenant_member(HANYANG_WORKSPACE_ID, role="maker")`(멱등) → `link_account_integrate` → `AccountService.login` → 쿠키 3종. **`create_account_and_tenant`·`_generate_account` 절대 재사용 금지**(workspace 생성 경로).
+- 2번째 workspace 방지: `ALLOW_CREATE_WORKSPACE=False`(기본) + Hanyang join 선행(`:1298-1306` no-op) + `is_setup` 은 `create_account` 에만.
+- cross-origin: SameSite=Lax 라 boram 은 **same-origin 프록시**(권장) 또는 1회용 code redirect. `web/` 안 건드림(LICENSE:11).
+- config 추가: `FIREBASE_PROJECT_ID`·`FIREBASE_CREDENTIALS_JSON`·`HANYANG_WORKSPACE_ID`·`FIREBASE_EXCHANGE_ENABLED`.
+- 스토리 5개: a(deps+config) → b(verifier libs/firebase.py) → c(provisioning) → d(endpoint) → e(boram 프록시).
+
+## 그 다음
 - D-2 통제: 공용 credential 게이트웨이 (사용량 귀속·상한), Redis 평문 캐시
+- 멤버관리 admin 게이트 (invite-email 등 — OWN-01 에서 발견)
 - route-table diff CI + default-deny 프록시
 - `RBAC_ENABLED=false` 에서 `edit_permission_required`/`is_admin_or_owner_required` 가 배타적으로 도는 반전 (설계 결정)
