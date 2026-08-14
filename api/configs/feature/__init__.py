@@ -1062,6 +1062,27 @@ class AuthConfig(BaseSettings):
         default=10,
     )
 
+    FIREBASE_PROJECT_ID: str | None = Field(
+        description="Firebase project ID; pins the audience (aud) claim when verifying Firebase ID tokens.",
+        default=None,
+    )
+
+    FIREBASE_CREDENTIALS_JSON: str | None = Field(
+        description="Filesystem path to the Firebase service-account credentials JSON. "
+        "When unset, Application Default Credentials (ADC) are used.",
+        default=None,
+    )
+
+    HANYANG_WORKSPACE_ID: str | None = Field(
+        description="Fixed tenant (workspace) UUID that Firebase-exchanged accounts are joined into.",
+        default=None,
+    )
+
+    FIREBASE_EXCHANGE_ENABLED: bool = Field(
+        description="Kill-switch for the Firebase ID-token exchange login endpoint (/console/api/firebase-exchange).",
+        default=True,
+    )
+
 
 class ModerationConfig(BaseSettings):
     """
