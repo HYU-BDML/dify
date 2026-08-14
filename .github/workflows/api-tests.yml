@@ -16,7 +16,7 @@ concurrency:
 jobs:
   api-unit:
     name: API Unit Tests
-    runs-on: depot-ubuntu-24.04
+    runs-on: ubuntu-latest
     env:
       COVERAGE_FILE: coverage-unit
     defaults:
@@ -72,7 +72,7 @@ jobs:
 
   api-integration:
     name: API Integration Tests
-    runs-on: depot-ubuntu-24.04
+    runs-on: ubuntu-latest
     env:
       COVERAGE_FILE: coverage-integration
       STORAGE_TYPE: opendal
@@ -126,7 +126,7 @@ jobs:
 
   api-coverage:
     name: API Coverage
-    runs-on: depot-ubuntu-24.04
+    runs-on: ubuntu-latest
     needs:
       - api-unit
       - api-integration
