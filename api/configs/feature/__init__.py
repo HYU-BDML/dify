@@ -1089,6 +1089,13 @@ class AuthConfig(BaseSettings):
         default=None,
     )
 
+    BORAM_PROVISION_ENABLED: bool = Field(
+        description="Kill-switch for the Boram app-provisioning endpoint "
+        "(/console/api/boram/provision-app). Note: an unset BORAM_SERVICE_SECRET already "
+        "seals the route with a 403 regardless of this flag.",
+        default=True,
+    )
+
     BORAM_SESSION_SECRET: str | None = Field(
         description="Dedicated secret for /console/api/boram/console-session (session minting). "
         "Prefer setting this so the session-issuing credential rotates independently of "

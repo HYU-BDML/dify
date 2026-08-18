@@ -34,6 +34,8 @@ for module_name in RESOURCE_MODULES:
 # Import other controllers
 from . import (
     apikey,
+    boram_copy,
+    boram_provision,
     extension,
     feature,
     human_input_form,
@@ -188,6 +190,8 @@ __all__ = [
     "datasets_segments",
     "datasource_auth",
     "datasource_content_preview",
+    "boram_copy",
+    "boram_provision",
     "boram_session",
     "email_register",
     "endpoint",
