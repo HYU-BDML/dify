@@ -1083,6 +1083,25 @@ class AuthConfig(BaseSettings):
         default=True,
     )
 
+    BORAM_SERVICE_SECRET: str | None = Field(
+        description="Shared secret the Boram BFF presents via X-Boram-Service-Secret on /console/api/boram/* "
+        "endpoints (provisioning, and session issue when BORAM_SESSION_SECRET is unset).",
+        default=None,
+    )
+
+    BORAM_SESSION_SECRET: str | None = Field(
+        description="Dedicated secret for /console/api/boram/console-session (session minting). "
+        "Prefer setting this so the session-issuing credential rotates independently of "
+        "BORAM_SERVICE_SECRET; unset falls back to BORAM_SERVICE_SECRET.",
+        default=None,
+    )
+
+    BORAM_SESSION_HANDOFF_ENABLED: bool = Field(
+        description="Kill-switch for the Boram console-session handoff endpoints "
+        "(/console/api/boram/console-session, /console/api/boram/session-redeem).",
+        default=True,
+    )
+
 
 class ModerationConfig(BaseSettings):
     """

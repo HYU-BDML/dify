@@ -58,3 +58,27 @@ Firebase ID token → Dify 콘솔 세션 교환. **기존 OAuth 컨트롤러(`oa
 - 멤버관리 admin 게이트 (invite-email 등 — OWN-01 에서 발견)
 - route-table diff CI + default-deny 프록시
 - `RBAC_ENABLED=false` 에서 `edit_permission_required`/`is_admin_or_owner_required` 가 배타적으로 도는 반전 (설계 결정)
+
+## AUTH-02 — Boram 콘솔 세션 핸드오프 (2026-08-19)
+AUTH-01 설계 노트의 "1회용 code redirect" 변형을 구현한다. Boram 이 클라 Firebase 세션을
+로그인 직후 파기하는 설계라 firebase-exchange 의 전제(브라우저의 ID 토큰)가 프로덕션에서
+성립하지 않았고, 도메인 게이트(hanyang.ac.kr)가 전화 OTP·일반 이메일 유저를 배제했다.
+AUTH-02 는 **BFF 를 인증자**로 둔다 — BFF 가 자체 `__session` 쿠키를 검증한 뒤 서버 간
+호출로 코드를 받아 iframe 에 넘긴다.
+
+- `controllers/console/auth/boram_session.py` (신규) —
+  - `POST /console/api/boram/console-session`: `X-Boram-Service-Secret`(상수시간 비교) 인증.
+    `{uid, email?, name?}` → AUTH-01 과 동일한 멱등 프로비저닝(openid→이메일 폴백→생성→
+    maker 조인) → **일회용 코드**(256-bit, Redis GETDEL, TTL 60s) 발급. 발급 감사 로그.
+    이메일 없는 계정(전화 OTP)은 `{uid}@uid.rita.ai.kr` 합성 주소로 유일성 유지.
+  - `GET /console/api/boram/session-redeem?code&redirect_url`: 코드 원자 소비 →
+    `AccountService.login` → 쿠키 3종 1st-party 설정 → 302. redirect_url 은 같은 오리진
+    상대경로만(`//` 차단 — open redirect).
+- `configs/feature/__init__.py` — `BORAM_SERVICE_SECRET`·`BORAM_SESSION_SECRET`(전용,
+  독립 로테이션 — 미설정 시 SERVICE 로 폴백)·`BORAM_SESSION_HANDOFF_ENABLED`(킬스위치).
+- ADR: 서비스 시크릿의 권한이 "프로비저닝"에서 "세션 발급"으로 확장된다 — 전용 시크릿·
+  단수명 일회용 코드·감사 로그·킬스위치가 완화다. 공개 vhost 에서 `/console/api/boram/*`
+  deny 는 nginx 후속(현재 시크릿 게이트 403).
+- ⚠️ 전제: 배포 이미지(1.16.1-boram3)에 있는 PROV-01(provision-app·copy-app) 소스가
+  이 저장소에 **미푸시** 상태다. 다음 이미지 빌드 전에 그 소스를 이 브랜치에 합류시켜야
+  프로비저닝이 유지된다(빠뜨리면 배포 시 PROV-01 이 사라진다).

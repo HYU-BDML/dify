@@ -85,6 +85,7 @@ from .app import (
 # Import auth controllers
 from .auth import (
     activate,
+    boram_session,
     data_source_bearer_auth,
     data_source_oauth,
     email_register,
@@ -187,6 +188,7 @@ __all__ = [
     "datasets_segments",
     "datasource_auth",
     "datasource_content_preview",
+    "boram_session",
     "email_register",
     "endpoint",
     "extension",
