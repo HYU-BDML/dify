@@ -59,6 +59,7 @@ from libs.token import (
     set_refresh_token_to_cookie,
 )
 from models import Account, Tenant
+from models.account import TenantAccountRole, TenantStatus
 from services.account_service import AccountService, TenantService
 
 logger = logging.getLogger(__name__)
@@ -126,20 +127,55 @@ def _provision(uid: str, email: str | None, name: str | None) -> Account:
             session=session,
         )
 
-    workspace_id = dify_config.HANYANG_WORKSPACE_ID
-    if not workspace_id:
-        logger.error("HANYANG_WORKSPACE_ID is not configured; refusing console-session issue.")
-        abort(500, "Console workspace is not configured.")
-
-    tenant = session.get(Tenant, workspace_id)
-    if tenant is None:
-        logger.error("HANYANG_WORKSPACE_ID %s does not resolve to a tenant.", workspace_id)
-        abort(500, "Console workspace not found.")
-
-    TenantService.create_tenant_member(tenant, account, session=session, role="maker")
+    tenant = _ensure_student_workspace(session, account, effective_name)
+    TenantService.switch_tenant(account, tenant.id, session=session)
     AccountService.link_account_integrate(firebase.FIREBASE_PROVIDER, uid, account, session=session)
 
     return account
+
+
+def _ensure_student_workspace(session, account: Account, display_name: str) -> Tenant:
+    """Return the student's **own** workspace, creating it on first use (M1-1).
+
+    Why this exists -- every student used to land in one shared workspace
+    (``HANYANG_WORKSPACE_ID``) as a ``maker``. That was the 2026-08-13 "single
+    workspace" posture; the 2026-08-14 written permission widened the licence to one
+    workspace per student, and the 2026-08-16 Dify-native plan depends on it.
+
+    What the sharing actually leaked (measured 2026-08-20 against production): apps
+    and datasets were **not** visible across accounts -- the ``maker`` role already
+    scopes those to their creator (a second account got 404 on an app and 403 on a
+    dataset). What *was* shared is workspace-level: tool provider credentials (a key
+    one student configures becomes usable by every other app in the workspace), model
+    settings, and the member list (every student saw every other student's name and
+    e-mail). Per-student workspaces close all three.
+
+    Idempotency: the student's workspace is found by "a tenant this account owns".
+    No mapping column is stored -- ownership *is* the mapping, so it cannot drift out
+    of sync with the join table.
+
+    ``is_setup=True`` bypasses ``is_workspace_creation_allowed()`` **on purpose**:
+    this is a server-controlled provision for an already-authenticated identity, not
+    a user-initiated "create workspace" action. The console API exposes no workspace
+    creation endpoint at all (``POST /console/api/workspaces`` answers 405), so this
+    stays the only path -- students still cannot mint workspaces for themselves.
+
+    🔴 Existing accounts keep their old membership in the shared workspace; this only
+    changes where they *land*. Cleaning up those stale joins is a separate migration
+    (roadmap M1-5) -- doing it here would delete data on a read-shaped request.
+    """
+    for ta, tenant in TenantService.get_account_memberships(account.id, session=session):
+        if ta.role == TenantAccountRole.OWNER and tenant.status == TenantStatus.NORMAL:
+            return tenant
+
+    tenant = TenantService.create_tenant(
+        name=f"{display_name}의 워크스페이스",
+        is_setup=True,
+        session=session,
+    )
+    TenantService.create_tenant_member(tenant, account, session=session, role=TenantAccountRole.OWNER)
+    logger.info("Created student workspace %s for account %s", tenant.id, account.id)
+    return tenant
 
 
 @console_ns.route("/boram/console-session")
