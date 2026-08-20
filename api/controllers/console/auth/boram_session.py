@@ -311,6 +311,38 @@ def _seed_model_credentials(tenant_id: str) -> None:
         logger.info("Seeded %s credential for workspace %s", BORAM_DEFAULT_LLM_PROVIDER, tenant_id)
     except Exception:
         logger.exception("Failed to seed model credential for workspace %s", tenant_id)
+        return
+
+    _apply_default_models(tenant_id)
+
+
+def _apply_default_models(tenant_id: str) -> None:
+    """Pin the workspace's default model **after** the credential exists.
+
+    `install_default_plugins_task` already tries this, but it runs before the
+    credential is in place (it is the thing that installs the plugin), so the call
+    fails there and the workspace ends up with *no* default pinned. Dify then answers
+    "default model" queries with whatever the provider lists first -- which is not the
+    model we configured (measured 2026-08-20: NEW_USER_DEFAULT_MODELS said
+    claude-sonnet-5, the workspace reported claude-opus-5).
+
+    Reading the same `NEW_USER_DEFAULT_MODELS` setting keeps one source of truth: the
+    deploy env decides the model, this only makes it stick.
+    """
+    service = ModelProviderService()
+    for model_type, provider, model in dify_config.NEW_USER_DEFAULT_MODEL_LIST:
+        try:
+            service.update_default_model_of_model_type(
+                tenant_id=tenant_id,
+                model_type=model_type,
+                provider=provider,
+                model=model,
+            )
+            logger.info("Pinned default %s=%s for workspace %s", model_type, model, tenant_id)
+        except Exception:
+            logger.exception(
+                "Failed to pin default model for workspace %s (%s/%s)", tenant_id, provider, model
+            )
 
 
 @console_ns.route("/boram/console-session")
