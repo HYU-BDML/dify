@@ -58,8 +58,17 @@ from libs.token import (
     set_csrf_token_to_cookie,
     set_refresh_token_to_cookie,
 )
+from events.tenant_event import tenant_was_created
 from models import Account, Tenant
 from models.account import TenantAccountRole, TenantStatus
+from services.enterprise.rbac_service import RBACService
+from services.model_provider_service import ModelProviderService
+from tasks.install_default_plugins_task import install_default_plugins_task
+
+#: 학생 워크스페이스에 기본으로 매어 주는 LLM provider. `NEW_USER_DEFAULT_MODELS` 의
+#: provider 부분과 **같은 값이어야** 한다 — 다르면 플러그인은 깔렸는데 자격증명이 다른
+#: provider 에 붙어 모델이 안 잡힌다.
+BORAM_DEFAULT_LLM_PROVIDER = "langgenius/anthropic/anthropic"
 from services.account_service import AccountService, TenantService
 
 logger = logging.getLogger(__name__)
@@ -128,6 +137,10 @@ def _provision(uid: str, email: str | None, name: str | None) -> Account:
         )
 
     tenant = _ensure_student_workspace(session, account, effective_name)
+    # 이미 개인 워크스페이스가 있던 계정도 **거기로 착지**시킨다. 신규 생성 경로는
+    # `_ensure_student_workspace` 안에서 이미 current 를 잡지만, 옛 공유 워크스페이스
+    # 멤버십을 함께 가진 기존 계정은 이 한 줄이 없으면 그쪽으로 돌아간다. 멱등이라
+    # 두 경로가 겹쳐도 무해하다.
     TenantService.switch_tenant(account, tenant.id, session=session)
     AccountService.link_account_integrate(firebase.FIREBASE_PROVIDER, uid, account, session=session)
 
@@ -166,6 +179,11 @@ def _ensure_student_workspace(session, account: Account, display_name: str) -> T
     """
     for ta, tenant in TenantService.get_account_memberships(account.id, session=session):
         if ta.role == TenantAccountRole.OWNER and tenant.status == TenantStatus.NORMAL:
+            # 🔴 이미 있는 워크스페이스도 **모델이 있는지 확인**한다. 워크스페이스 생성과
+            # 자격증명 심기는 별개 단계라, 앞선 배포에서 만들어졌거나 심기가 실패한 워크스페이스는
+            # 모델 없이 남아 있다. 여기서 안 고치면 그 학생은 영영 빈 채로 쓴다 -- 프로비저너가
+            # 「id 가 있으면 됐다」로 넘어가는 것과 같은 함정이다. 멱등이라 매번 불려도 무해하다.
+            _ensure_model_ready(str(tenant.id))
             return tenant
 
     tenant = TenantService.create_tenant(
@@ -174,8 +192,125 @@ def _ensure_student_workspace(session, account: Account, display_name: str) -> T
         session=session,
     )
     TenantService.create_tenant_member(tenant, account, session=session, role=TenantAccountRole.OWNER)
+
+    # RBAC 가 켜져 있으면 owner 역할을 실제로 매어 준다. `create_owner_tenant_if_not_exist`
+    # 가 하는 것과 같은 처리다 -- 빠뜨리면 역할만 문자열로 남고 권한이 안 붙는다.
+    if dify_config.RBAC_ENABLED:
+        owner_role_id = AccountService._resolve_legacy_role_id(
+            str(tenant.id), account.id, TenantAccountRole.OWNER
+        )
+        RBACService.MemberRoles.replace(
+            tenant_id=str(tenant.id),
+            account_id=account.id,
+            member_account_id=account.id,
+            role_ids=[owner_role_id],
+            session=session,
+        )
+
+    account.set_current_tenant_with_session(tenant, session=session)
+    session.commit()
+
+    # 🔴 **이 이벤트를 빠뜨리면 새 워크스페이스가 빈 채로 시작한다.**
+    # `tenant_was_created` -> `install_default_plugins_task` 가 신규 tenant 에
+    # `NEW_USER_DEFAULT_PLUGIN_IDS`(모델 provider 는 1.x 부터 플러그인이다)를 깔고
+    # `NEW_USER_DEFAULT_MODELS` 로 기본 모델을 잡는다. 저수준 `create_tenant()` 는 이 신호를
+    # 안 보낸다 -- 보내는 쪽은 `create_owner_tenant_if_not_exist()` 다(2026-08-20 실측:
+    # 이벤트 없이 만든 워크스페이스는 LLM provider 0 개였고 앱을 돌릴 수 없었다).
+    tenant_was_created.send(tenant)
+
+    # 🔴 **플러그인 설치를 기다린 뒤에 자격증명을 심는다.**
+    # 위 이벤트의 핸들러는 `install_default_plugins_task.delay(...)` 로 **비동기** 큐잉을 한다.
+    # 그래서 바로 자격증명을 심으려 들면 provider 가 아직 없어서
+    # `ProviderNotFoundError: Provider langgenius/anthropic/anthropic does not exist.` 가 난다
+    # (실측 2026-08-20 — 첫 구현이 정확히 이 경쟁 조건에 걸렸다).
+    #
+    # 워크스페이스 생성은 학생 **생애 1회**뿐이라 여기서 몇 초 기다리는 편이,
+    # 「첫 로그인에는 모델이 없다」보다 낫다. 실패해도 던지지 않는다 — 아래 재시도가 받는다.
+    _install_default_plugins_sync(str(tenant.id))
+    _seed_model_credentials(str(tenant.id))
+
     logger.info("Created student workspace %s for account %s", tenant.id, account.id)
     return tenant
+
+
+def _ensure_model_ready(tenant_id: str) -> None:
+    """Seed the default model credential if this workspace still has none (idempotent).
+
+    Cheap check first: if the workspace already has any configured LLM provider we do
+    nothing, so the common path costs one query. Only a workspace that is still empty
+    pays for the plugin install + credential write.
+    """
+    try:
+        configured = ModelProviderService().get_provider_list(tenant_id=tenant_id, model_type="llm")
+        if any(p.custom_configuration.current_credential_id for p in configured):
+            return
+    except Exception:
+        logger.exception("Could not read provider list for workspace %s; attempting seed anyway", tenant_id)
+
+    _install_default_plugins_sync(tenant_id)
+    _seed_model_credentials(tenant_id)
+
+
+def _install_default_plugins_sync(tenant_id: str) -> None:
+    """Install the default plugins **in this request**, not on the worker queue.
+
+    The `tenant_was_created` handler queues this with `.delay(...)`, which is the right
+    default for Dify: tenant creation should not block on a marketplace download. But we
+    need the model provider to exist *before* seeding its credential, and the seeding is
+    the whole point of the M1-2 slice -- an async gap here means the student's first
+    login lands in a workspace with no usable model.
+
+    Calling the task function directly runs it inline (Celery tasks are plain callables).
+    The queued copy still runs later and is idempotent, so the duplicate is harmless.
+    """
+    plugin_ids = dify_config.NEW_USER_DEFAULT_PLUGIN_ID_LIST
+    if not plugin_ids:
+        return
+    try:
+        install_default_plugins_task(tenant_id, plugin_ids)
+    except Exception:
+        logger.exception("Inline default-plugin install failed for workspace %s", tenant_id)
+
+
+def _seed_model_credentials(tenant_id: str) -> None:
+    """Give a brand-new student workspace a usable LLM (M1-2).
+
+    🔴 **Why not the `HOSTED_ANTHROPIC_*` settings.** Those look like the obvious
+    answer, and the roadmap originally called for them, but ``HostingConfiguration``
+    bails out on the first line unless the deployment is the *cloud* edition::
+
+        def init_app(self, app):
+            if dify_config.DEPLOYMENT_EDITION != DeploymentEdition.CLOUD:
+                return
+
+    We are self-hosted, so every ``HOSTED_*`` value is read and then ignored
+    (measured 2026-08-20: env set, provider list still empty). Seeding a real
+    per-tenant credential is the path that actually works here.
+
+    The plugin itself arrives via ``tenant_was_created`` ->
+    ``install_default_plugins_task``; a provider only becomes *usable* once a
+    credential exists, so this runs after that signal.
+
+    Failure is logged, not raised: the workspace and the console session are still
+    valid without a model, and killing the login over a seeding hiccup would lock the
+    student out of a workspace that otherwise works. The console shows an unconfigured
+    provider in that case, which is a state a person can see and fix.
+    """
+    api_key = dify_config.BORAM_ANTHROPIC_API_KEY
+    if not api_key:
+        logger.warning("BORAM_ANTHROPIC_API_KEY is unset; workspace %s starts without a model.", tenant_id)
+        return
+
+    try:
+        ModelProviderService().create_provider_credential(
+            tenant_id=tenant_id,
+            provider=BORAM_DEFAULT_LLM_PROVIDER,
+            credentials={"anthropic_api_key": api_key},
+            credential_name="boram-default",
+        )
+        logger.info("Seeded %s credential for workspace %s", BORAM_DEFAULT_LLM_PROVIDER, tenant_id)
+    except Exception:
+        logger.exception("Failed to seed model credential for workspace %s", tenant_id)
 
 
 @console_ns.route("/boram/console-session")

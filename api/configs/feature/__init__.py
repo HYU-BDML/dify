@@ -1083,6 +1083,15 @@ class AuthConfig(BaseSettings):
         default=True,
     )
 
+    BORAM_ANTHROPIC_API_KEY: str | None = Field(
+        description="Anthropic key seeded into every newly created student workspace so it has a usable LLM "
+        "from the first login. The HOSTED_ANTHROPIC_* settings cannot serve this purpose: "
+        "HostingConfiguration.init_app() returns early unless DEPLOYMENT_EDITION is CLOUD, so on a "
+        "self-hosted deployment they are read and ignored. Unset means new workspaces start without a "
+        "model — the console then shows an unconfigured provider.",
+        default=None,
+    )
+
     BORAM_SERVICE_SECRET: str | None = Field(
         description="Shared secret the Boram BFF presents via X-Boram-Service-Secret on /console/api/boram/* "
         "endpoints (provisioning, and session issue when BORAM_SESSION_SECRET is unset).",
