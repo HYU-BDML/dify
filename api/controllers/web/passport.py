@@ -17,9 +17,51 @@ from extensions.ext_database import db
 from fields.base import ResponseModel
 from libs.helper import dump_response
 from libs.passport import PassportService
-from libs.token import extract_webapp_access_token
+from libs.token import extract_access_token, extract_webapp_access_token
 from models.enums import EndUserType
 from models.model import App, EndUser, Site
+
+
+def _boram_webapp_gate() -> None:
+    """Require a Boram console session before a WebApp passport is issued. (M1-6)
+
+    🔴 **Why.** Upstream WebApp access is anonymous by design: the site code *is* the
+    credential (see below — an EndUser is created with `is_anonymous=True` and a token
+    is returned to anyone presenting a valid code). For Dify's own hosting that is a
+    deliberate product choice. For Boram it is not: the site code travels inside the
+    embed's iframe `src`, so anyone who opens devtools can copy it and then talk to a
+    student's app — billed to our Anthropic key — without ever logging in. Measured
+    2026-08-20 against production: anonymous passport → `/api/parameters` 200 →
+    `/api/chat-messages` 200 with a real answer.
+
+    **How the browser presents credentials** (the first question this gate had to
+    answer): `session-redeem` already sets its cookies with `Domain=rita.ai.kr` and
+    `Path=/`, so they are attached automatically to `dify.rita.ai.kr` requests —
+    including this one. A student who reached the embed through Boram therefore
+    already carries proof; an outsider with only a site code does not. No new handoff,
+    no new cookie, nothing for the web app to send explicitly.
+
+    We verify the signature rather than merely checking presence, so a forged cookie
+    does not pass. What we do **not** do is check *which* account it is: this gate
+    answers "is this a logged-in Boram user", and per-app ownership is a separate
+    question that `maker` scoping already handles inside the console.
+
+    ⚠️ `passport.py` is an upstream file that changes often, so the footprint here is
+    one call at the top of the view plus this function. Keep it that way — the smaller
+    the diff, the cheaper every rebase.
+
+    Kill-switch: `BORAM_WEBAPP_GATE_ENABLED=false` restores upstream behaviour.
+    """
+    if not dify_config.BORAM_WEBAPP_GATE_ENABLED:
+        return
+
+    token = extract_access_token(request)
+    if not token:
+        raise Unauthorized("Boram login required.")
+    try:
+        PassportService().verify(token)
+    except Exception:
+        raise Unauthorized("Boram login required.")
 from services.feature_service import FeatureService
 from services.webapp_auth_service import WebAppAuthService, WebAppAuthType
 
@@ -60,6 +102,7 @@ class PassportResource(Resource):
         access_token = extract_webapp_access_token(request)
         if app_code is None:
             raise Unauthorized("X-App-Code header is missing.")
+        _boram_webapp_gate()
         if system_features.webapp_auth.enabled:
             enterprise_user_decoded = decode_enterprise_webapp_user_id(access_token)
             app_auth_type = WebAppAuthService.get_app_auth_type(app_code=app_code, session=db.session())

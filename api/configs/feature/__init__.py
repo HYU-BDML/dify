@@ -1083,6 +1083,14 @@ class AuthConfig(BaseSettings):
         default=True,
     )
 
+    BORAM_WEBAPP_GATE_ENABLED: bool = Field(
+        description="Require a valid Boram console session before issuing a WebApp passport "
+        "(/api/passport). Upstream treats the site code itself as the credential, which makes every "
+        "student app anonymously usable by anyone who copies the code out of the embed's iframe src — "
+        "billed to our model key. Set false to restore upstream anonymous access.",
+        default=True,
+    )
+
     BORAM_ANTHROPIC_API_KEY: str | None = Field(
         description="Anthropic key seeded into every newly created student workspace so it has a usable LLM "
         "from the first login. The HOSTED_ANTHROPIC_* settings cannot serve this purpose: "
